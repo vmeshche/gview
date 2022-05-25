@@ -1,29 +1,17 @@
+# standard modules
 from dataclasses import dataclass
 import base64
 import getpass
 import os
-from typing import Dict, Tuple
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from typing import Dict
 import json
+from logging import Logger
 
+# custom modules
+from request import get
+from base_logger import get_logger
 
-def request(method: str, url: str, headers: dict = None, body=None) -> Tuple[int, bytes]:
-    req = Request(url, data=body, headers=headers, method=method)
-
-    try:
-        with urlopen(req) as open_request:
-            status = open_request.status
-            response = open_request.read()
-    except HTTPError as e:
-        return e.code, str(e).encode()
-
-    return status, response
-
-
-def get(*args, **kwargs):
-    return request("GET", *args, **kwargs)
-
+logger: Logger = get_logger(__name__)
 
 @dataclass
 class LoginBundle:
@@ -36,11 +24,13 @@ class LoginBundle:
 
     @staticmethod
     def non_interactive_login() -> "LoginBundle":
+        pass_env_var = 'GITHUB_PAT'
         username = getpass.getuser()
-        if "GITHUB_PAT" in os.environ:
-            password = os.getenv('GITHUB_PAT')
+        if f"{pass_env_var}" in os.environ:
+            logger.debug(f"Found {pass_env_var} environment variable. Getting password from it.")
+            password = os.getenv(f'{pass_env_var}')
         else:
-            print("To hide interactive login put the GitHub PAT to env variable 'GITHUB_PAT'")
+            logger.info(f"To hide interactive login put the GitHub PAT to env variable '{pass_env_var}'")
             password = getpass.getpass(f"Password for {username}: ")
         return LoginBundle(username, password)
 
@@ -64,6 +54,10 @@ class GitHubInstance:
 
         status, data = get(url, headers=self.instance.headers)
 
+        if status != 200:
+            logger.info(f"Failed to perform request of {url}, status is {status}")
+            return
+
         data = json.loads(data)
         print(data)
 
@@ -72,8 +66,6 @@ def main():
     print(f'We are starting')
     login_bundle = LoginBundle.non_interactive_login()
     gh_instance_info = GitHubInstanceInfo("https://api.github.com", login_bundle)
-
-    print(gh_instance_info.headers)
 
     gh_instance = GitHubInstance(gh_instance_info)
 
