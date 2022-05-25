@@ -61,15 +61,20 @@ class GitHubInstance:
         data = json.loads(data)
         print(data)
 
+    def get_user_activities(self, user: str):
+        logger.info("Will be implemented next")
+
 
 def main():
-    print(f'We are starting')
+    # Put arg parse here. something like "user"
+
     login_bundle = LoginBundle.non_interactive_login()
     gh_instance_info = GitHubInstanceInfo("https://api.github.com", login_bundle)
 
     gh_instance = GitHubInstance(gh_instance_info)
 
     gh_instance.get_user("vmeshche")
+    gh_instance.get_user_activities("vmeshche")
 
 
 if __name__ == '__main__':
