@@ -4,13 +4,12 @@ import base64
 import getpass
 import os
 from typing import Dict, List
-import json
 from logging import Logger
 import argparse
-import datetime
+from datetime import datetime
 
 # custom modules
-from request import get, response_is_ok
+from request import get
 from base_logger import get_logger
 
 logger: Logger = get_logger(__name__)
@@ -78,10 +77,10 @@ class GitHubInstance:
 @dataclass
 class Commit:
     author: str
-    date: str
+    date: datetime
 
     def __str__(self):
-        return f"{self.author}; {self.date}"
+        return f"{self.author}; {str(self.date)}"
 
 
 class GitHubEvents:
@@ -99,20 +98,36 @@ class GitHubEvents:
             for item in data:
                 if item["type"] == event_type:
                     commit = Commit(author=item["actor"]["login"],
-                                    date=item["created_at"])
+                                    date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z')
+                                   )
                     self.commits.append(commit)
             for c in self.commits:
                 print(c)
+            contribution_dict = self.build_contribution_dict()
+            for item in contribution_dict:
+                print(item, contribution_dict[item])
+
+    def build_contribution_dict(self) -> Dict:
+        cdict = {}
+        for commit in self.commits:
+            day = str(commit.date.date())
+            if day in cdict:
+                cdict[day] += 1
+            else:
+                cdict[day] = 1
+        return cdict
 
 
 def main():
     args = get_args()
 
+    # Get GitHub instance to work with
     login_bundle = LoginBundle.non_interactive_login()
     gh_instance_info = GitHubInstanceInfo("https://api.github.com", login_bundle)
     gh_instance = GitHubInstance(gh_instance_info)
-    gh_events = GitHubEvents(gh_instance)
 
+    # Get Events tools and get filtered event list
+    gh_events = GitHubEvents(gh_instance)
     gh_events.filter_events(args.user, "PushEvent")
 
 
