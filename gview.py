@@ -7,6 +7,9 @@ from typing import Dict, List
 from logging import Logger
 import argparse
 from datetime import datetime
+from datetime import timedelta
+from math import ceil
+import calendar
 
 # custom modules
 from request import get
@@ -98,24 +101,71 @@ class GitHubEvents:
             for item in data:
                 if item["type"] == event_type:
                     commit = Commit(author=item["actor"]["login"],
-                                    date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z')
+                                    date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z').date()
                                    )
                     self.commits.append(commit)
-            for c in self.commits:
-                print(c)
             contribution_dict = self.build_contribution_dict()
-            for item in contribution_dict:
-                print(item, contribution_dict[item])
+            drawer = Drawer(contribution_dict)
+            drawer.draw()
 
     def build_contribution_dict(self) -> Dict:
         cdict = {}
         for commit in self.commits:
-            day = str(commit.date.date())
+            day = str(commit.date)
             if day in cdict:
                 cdict[day] += 1
             else:
                 cdict[day] = 1
         return cdict
+
+
+class Drawer:
+    def __init__(self, contrib_data: Dict):
+        self.contributions = contrib_data
+        self.week_days = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+
+    def check_date_contribution(self, date) -> str:
+        contrib_this_day = "-"
+        for i in self.contributions:
+            i_date = datetime.strptime(i, '%Y-%m-%d').date()
+            if i_date == date:
+                contrib_this_day = str(self.contributions[i])
+        return contrib_this_day
+
+    def draw(self):
+        w = 3
+        weeks = 13
+        days_interval = 7*weeks # 91 day; about 3 months
+        now = datetime.now().date()
+        start = now - timedelta(days=days_interval)
+        start = start + timedelta(days=(7 - start.weekday())) # calculate monday on start week
+        print(f"Interval from {start} to {now}")
+
+        # Prepare first line
+        m_interval = 17
+        last_months = []
+        for i in range(start.month, now.month + 1):
+            last_months.append(f"{str(calendar.month_name[i]):{m_interval}}")
+        months_line = "".join(last_months)
+
+        days_counter = start
+        lines = []
+        for week in range(0, weeks):
+            line = []
+            for day in range(0, 7):
+                text = f'{str(self.check_date_contribution(days_counter)):{w}}'
+                line.append(text)
+                days_counter += timedelta(days=1)
+            lines.append(line)
+
+        print(months_line)
+        for day in range(0, 7): # iterate week days (Rows)
+            line = [f'{str(self.week_days[day]):{w}}']
+            for week in range(0, weeks): # iterate weeks (Columns)
+                text = lines[week][day]
+                line.append(text)
+                days_counter += timedelta(days=1)
+            print(" ".join(line))
 
 
 def main():
