@@ -3,15 +3,25 @@ from dataclasses import dataclass
 import base64
 import getpass
 import os
-from typing import Dict
+from typing import Dict, List
 import json
 from logging import Logger
+import argparse
+import datetime
 
 # custom modules
-from request import get
+from request import get, response_is_ok
 from base_logger import get_logger
 
 logger: Logger = get_logger(__name__)
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="Tool to get user activities on GitHub")
+    parser.add_argument("-u", required=True, dest="user", type=str,
+                        help="User name on GitHub to get info")
+    return parser.parse_args()
+
 
 @dataclass
 class LoginBundle:
@@ -42,7 +52,8 @@ class GitHubInstanceInfo:
 
     @property
     def headers(self) -> Dict[str, str]:
-        return {"Accept": "application/json", "Authorization": f"Basic {self.credentials.base64}"}
+        return {"Accept": "application/vnd.github.v3+json",
+                "Authorization": f"Basic {self.credentials.base64}"}
 
 
 class GitHubInstance:
@@ -52,29 +63,57 @@ class GitHubInstance:
     def get_user(self, user: str):
         url = self.instance.base_url + f"/users/{user}"
 
-        status, data = get(url, headers=self.instance.headers)
+        data = get(url, headers=self.instance.headers)
 
-        if status != 200:
-            logger.info(f"Failed to perform request of {url}, status is {status}")
-            return
+        return data
 
-        data = json.loads(data)
-        print(data)
+    def get_user_events(self, user: str):
+        url = self.instance.base_url + f"/users/{user}/events/public"
 
-    def get_user_activities(self, user: str):
-        logger.info("Will be implemented next")
+        data = get(url, headers=self.instance.headers)
+
+        return data
+
+
+@dataclass
+class Commit:
+    author: str
+    date: str
+
+    def __str__(self):
+        return f"{self.author}; {self.date}"
+
+
+class GitHubEvents:
+    instance: GitHubInstance
+    commits: List[Commit]
+
+    def __init__(self, gh_instance: GitHubInstance):
+        self.instance = gh_instance
+        self.commits = []
+
+    def filter_events(self, user: str, event_type: str):
+        data = self.instance.get_user_events(user)
+
+        if data:
+            for item in data:
+                if item["type"] == event_type:
+                    commit = Commit(author=item["actor"]["login"],
+                                    date=item["created_at"])
+                    self.commits.append(commit)
+            for c in self.commits:
+                print(c)
 
 
 def main():
-    # Put arg parse here. something like "user"
+    args = get_args()
 
     login_bundle = LoginBundle.non_interactive_login()
     gh_instance_info = GitHubInstanceInfo("https://api.github.com", login_bundle)
-
     gh_instance = GitHubInstance(gh_instance_info)
+    gh_events = GitHubEvents(gh_instance)
 
-    gh_instance.get_user("vmeshche")
-    gh_instance.get_user_activities("vmeshche")
+    gh_events.filter_events(args.user, "PushEvent")
 
 
 if __name__ == '__main__':
