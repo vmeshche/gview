@@ -86,6 +86,21 @@ class Commit:
         return f"{self.author}; {str(self.date)}"
 
 
+@dataclass
+class Day:
+    date: datetime
+    contributions: int = 0
+
+    def __str__(self):
+        return str(self.date) + ' ' + str(self.contributions)
+
+    def __eq__(self, other):
+        return True if self.date == other.date else False
+
+    def __add__(self, other):
+        return Day(self.date, self.contributions + other.contributions)
+
+
 class GitHubEvents:
     instance: GitHubInstance
     commits: List[Commit]
@@ -102,21 +117,25 @@ class GitHubEvents:
                 if item["type"] == event_type:
                     commit = Commit(author=item["actor"]["login"],
                                     date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z').date()
-                                   )
+                                    )
                     self.commits.append(commit)
-            contribution_dict = self.build_contribution_dict()
-            drawer = Drawer(contribution_dict)
+            contributions = self.build_contribution_map()
+            for c in contributions:
+                print(c)
+            drawer = Drawer(contributions)
             drawer.draw()
 
-    def build_contribution_dict(self) -> Dict:
-        cdict = {}
+    def build_contribution_map(self) -> List[Day]:
+        day_map = []
         for commit in self.commits:
-            day = str(commit.date)
-            if day in cdict:
-                cdict[day] += 1
+            new_day = Day(date=commit.date, contributions=1)
+            if new_day in day_map:
+                for i, day in enumerate(day_map):
+                    if day == new_day:
+                        day_map[i] = day + new_day
             else:
-                cdict[day] = 1
-        return cdict
+                day_map.append(new_day)
+        return day_map
 
 
 class Drawer:
@@ -126,19 +145,18 @@ class Drawer:
 
     def check_date_contribution(self, date) -> str:
         contrib_this_day = "-"
-        for i in self.contributions:
-            i_date = datetime.strptime(i, '%Y-%m-%d').date()
-            if i_date == date:
-                contrib_this_day = str(self.contributions[i])
+        for day in self.contributions:
+            if day.date == date:
+                contrib_this_day = str(day.contributions)
         return contrib_this_day
 
     def draw(self):
         w = 3
         weeks = 13
-        days_interval = 7*weeks # 91 day; about 3 months
+        days_interval = 7 * weeks  # 91 day; about 3 months
         now = datetime.now().date()
         start = now - timedelta(days=days_interval)
-        start = start + timedelta(days=(7 - start.weekday())) # calculate monday on start week
+        start = start + timedelta(days=(7 - start.weekday()))  # calculate monday on start week
         print(f"Interval from {start} to {now}")
 
         # Prepare first line
@@ -159,9 +177,9 @@ class Drawer:
             lines.append(line)
 
         print(months_line)
-        for day in range(0, 7): # iterate week days (Rows)
+        for day in range(0, 7):  # iterate week days (Rows)
             line = [f'{str(self.week_days[day]):{w}}']
-            for week in range(0, weeks): # iterate weeks (Columns)
+            for week in range(0, weeks):  # iterate weeks (Columns)
                 text = lines[week][day]
                 line.append(text)
                 days_counter += timedelta(days=1)
