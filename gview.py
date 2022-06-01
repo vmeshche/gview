@@ -8,8 +8,8 @@ from logging import Logger
 import argparse
 from datetime import datetime
 from datetime import timedelta
-from math import ceil
 import calendar
+from enum import Enum
 
 # custom modules
 from request import get
@@ -62,6 +62,11 @@ class GitHubInstance:
     def __init__(self, instance: GitHubInstanceInfo):
         self.instance = instance
 
+    @property
+    def headers(self) -> Dict[str, str]:
+        return {"Accept": "application/vnd.github.v3+json",
+                "Authorization": f"Basic {self.instance.credentials.base64}"}
+
     def get_user(self, user: str):
         url = self.instance.base_url + f"/users/{user}"
 
@@ -77,6 +82,16 @@ class GitHubInstance:
         return data
 
 
+class Colorator(Enum):
+    RED = "\033[38;5;202m"  # 0 contribution
+    YELLOW = "\033[38;5;228m"  # 1-3 contributions
+    PURPLE = "\033[38;5;105m"  # 3-... contributions
+    RESET = "\033[0;0m"  # to reset color to default.
+
+    def color(self, s: str):
+        return f"{self.value}{s}{Colorator.RESET.value}"
+
+
 @dataclass
 class Commit:
     author: str
@@ -89,10 +104,10 @@ class Commit:
 @dataclass
 class Day:
     date: datetime
-    contributions: int = 0
+    contributions: str = "-"
 
     def __str__(self):
-        return str(self.date) + ' ' + str(self.contributions)
+        return str(self.contributions)
 
     def __eq__(self, other):
         return True if self.date == other.date else False
@@ -107,25 +122,30 @@ class GitHubEvents:
 
     def __init__(self, gh_instance: GitHubInstance):
         self.instance = gh_instance
-        self.commits = []
+        self.commits: List[Commit] = []
 
-    def filter_events(self, user: str, event_type: str):
+    def filter_events(self, user: str, event_types: List[str]):
+        """
+        Get public events from GitHub and return a list of Days with contribution data
+
+        :param user:
+        :param event_types:
+        :return:
+        """
         data = self.instance.get_user_events(user)
 
         if data:
             for item in data:
-                if item["type"] == event_type:
+                if item["type"] in event_types:
                     commit = Commit(author=item["actor"]["login"],
                                     date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z').date()
                                     )
                     self.commits.append(commit)
-            contributions = self.build_contribution_map()
-            for c in contributions:
-                print(c)
-            drawer = Drawer(contributions)
-            drawer.draw()
+            return self._sum_contributions()
+        else:
+            raise NameError("No data requested!")
 
-    def build_contribution_map(self) -> List[Day]:
+    def _sum_contributions(self) -> List[Day]:
         day_map = []
         for commit in self.commits:
             new_day = Day(date=commit.date, contributions=1)
@@ -135,24 +155,31 @@ class GitHubEvents:
                         day_map[i] = day + new_day
             else:
                 day_map.append(new_day)
+
+        for c in day_map:  # a bit debug
+            print(c)
+
         return day_map
 
 
-class Drawer:
-    def __init__(self, contrib_data: Dict):
-        self.contributions = contrib_data
+class GitHubCalendar:
+    def __init__(self, events: List):
+        self.events = events
         self.week_days = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-    def check_date_contribution(self, date) -> str:
-        contrib_this_day = "-"
-        for day in self.contributions:
-            if day.date == date:
-                contrib_this_day = str(day.contributions)
-        return contrib_this_day
+    def _check_date_contribution(self, new_day: Day) -> str:
+        for day in self.events:
+            if day == new_day:
+                return day
+        return new_day
 
-    def draw(self):
-        w = 3
-        weeks = 13
+    def draw(self, w: int = 3, weeks: int = 13):
+        """
+        :param w: Interval between days in line
+        :param weeks: Amount of weeks in drawing area
+        :return: Print contribution calendar
+        """
+
         days_interval = 7 * weeks  # 91 day; about 3 months
         now = datetime.now().date()
         start = now - timedelta(days=days_interval)
@@ -160,7 +187,7 @@ class Drawer:
         print(f"Interval from {start} to {now}")
 
         # Prepare first line
-        m_interval = 17
+        m_interval = 17  # Interval between months in line
         last_months = []
         for i in range(start.month, now.month + 1):
             last_months.append(f"{str(calendar.month_name[i]):{m_interval}}")
@@ -168,14 +195,16 @@ class Drawer:
 
         days_counter = start
         lines = []
-        for week in range(0, weeks):
+        for week in range(0, weeks):  # iterate weeks (Columns)
             line = []
-            for day in range(0, 7):
-                text = f'{str(self.check_date_contribution(days_counter)):{w}}'
+            for day in range(0, 7):  # iterate week days (Rows)
+                new_day = Day(days_counter)
+                text = f'{str(self._check_date_contribution(new_day)):{w}}'
                 line.append(text)
                 days_counter += timedelta(days=1)
             lines.append(line)
 
+        # Lets draw prepared data
         print(months_line)
         for day in range(0, 7):  # iterate week days (Rows)
             line = [f'{str(self.week_days[day]):{w}}']
@@ -189,14 +218,18 @@ class Drawer:
 def main():
     args = get_args()
 
-    # Get GitHub instance to work with
+    # Get GitHub instance
     login_bundle = LoginBundle.non_interactive_login()
     gh_instance_info = GitHubInstanceInfo("https://api.github.com", login_bundle)
     gh_instance = GitHubInstance(gh_instance_info)
 
-    # Get Events tools and get filtered event list
+    # Get filtered events list
     gh_events = GitHubEvents(gh_instance)
-    gh_events.filter_events(args.user, "PushEvent")
+    events = gh_events.filter_events(args.user, ["PushEvent"])
+
+    # Print events in GitHub contribution calendar style
+    gh_calendar = GitHubCalendar(events)
+    gh_calendar.draw()
 
 
 if __name__ == '__main__':
