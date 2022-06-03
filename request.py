@@ -8,27 +8,8 @@ import json
 logger: Logger = get_logger(__name__)
 
 
-def request(method: str, url: str, headers: dict = None, body=None) -> List:
-    logger.debug(f"Starting {method} request for {url}")
-    req = Request(url, data=body, headers=headers, method=method)
-    data = []
-
-    try:
-        with urlopen(req) as open_request:
-            status = open_request.status
-            response = open_request.read()
-    except HTTPError as e:
-        logger.error(f"Cannot request {url} with {method} method, error: {e.code} {str(e)}")
-        return e.code, str(e).encode()
-
-    if response_is_ok(status, url):
-        data = json.loads(response)
-
-    return data
-
-
 def paginated_request(method: str, url: str, headers: dict = None, body=None) -> List:
-    '''
+    """
     Simple paginated request implementation.
 
     :param method: Request type. EXamples: GET, POST...
@@ -36,7 +17,7 @@ def paginated_request(method: str, url: str, headers: dict = None, body=None) ->
     :param headers: [Optional] Request headers
     :param body: [Optional] Request body
     :return: A collection of paginated requests converted to List
-    '''
+    """
 
     has_more_objects = True
     page_size = 1000

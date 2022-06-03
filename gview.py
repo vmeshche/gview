@@ -83,13 +83,14 @@ class GitHubInstance:
 
 
 class Colorator(Enum):
-    RED = "\033[38;5;202m"  # 0 contribution
-    YELLOW = "\033[38;5;228m"  # 1-3 contributions
-    PURPLE = "\033[38;5;105m"  # 3-... contributions
+    BLUE = "\033[38;5;81m"  # 0 contribution
+    LIGHT_GREEN = "\033[38;5;115m"  # 1-3 contributions
+    GREEN = "\033[38;5;190m"  # 3-... contributions
     RESET = "\033[0;0m"  # to reset color to default.
 
-    def color(self, s: str):
-        return f"{self.value}{s}{Colorator.RESET.value}"
+    @staticmethod
+    def color(color, s: str):
+        return f"{color.value}{s}{Colorator.RESET.value}"
 
 
 @dataclass
@@ -100,20 +101,27 @@ class Commit:
     def __str__(self):
         return f"{self.author}; {str(self.date)}"
 
-
-@dataclass
+@dataclass()
 class Day:
     date: datetime
     contributions: str = "-"
+    color: Colorator = Colorator.BLUE
 
     def __str__(self):
-        return str(self.contributions)
+        return Colorator.color(color=self.color, s=str(self.contributions))
 
     def __eq__(self, other):
         return True if self.date == other.date else False
 
     def __add__(self, other):
-        return Day(self.date, self.contributions + other.contributions)
+        day = Day(self.date, self.contributions + other.contributions)
+        if str(day.contributions) == "-":
+            day.color = Colorator.BLUE
+        elif int(day.contributions) <= 3:
+            day.color = Colorator.LIGHT_GREEN
+        else:
+            day.color = Colorator.GREEN
+        return day
 
 
 class GitHubEvents:
@@ -128,9 +136,9 @@ class GitHubEvents:
         """
         Get public events from GitHub and return a list of Days with contribution data
 
-        :param user:
-        :param event_types:
-        :return:
+        :param user: User to get events
+        :param event_types: Event type to count
+        :return: return a list of days with contributions
         """
         data = self.instance.get_user_events(user)
 
@@ -148,7 +156,9 @@ class GitHubEvents:
     def _sum_contributions(self) -> List[Day]:
         day_map = []
         for commit in self.commits:
-            new_day = Day(date=commit.date, contributions=1)
+            new_day = Day(date=commit.date,
+                          contributions=1,
+                          color=Colorator.LIGHT_GREEN)
             if new_day in day_map:
                 for i, day in enumerate(day_map):
                     if day == new_day:
@@ -173,7 +183,7 @@ class GitHubCalendar:
                 return day
         return new_day
 
-    def draw(self, w: int = 3, weeks: int = 13):
+    def draw(self, weeks: int = 13):
         """
         :param w: Interval between days in line
         :param weeks: Amount of weeks in drawing area
@@ -199,7 +209,7 @@ class GitHubCalendar:
             line = []
             for day in range(0, 7):  # iterate week days (Rows)
                 new_day = Day(days_counter)
-                text = f'{str(self._check_date_contribution(new_day)):{w}}'
+                text = f'{str(self._check_date_contribution(new_day))}'
                 line.append(text)
                 days_counter += timedelta(days=1)
             lines.append(line)
@@ -207,12 +217,12 @@ class GitHubCalendar:
         # Lets draw prepared data
         print(months_line)
         for day in range(0, 7):  # iterate week days (Rows)
-            line = [f'{str(self.week_days[day]):{w}}']
+            line = [f'{str(self.week_days[day])}']
             for week in range(0, weeks):  # iterate weeks (Columns)
                 text = lines[week][day]
                 line.append(text)
                 days_counter += timedelta(days=1)
-            print(" ".join(line))
+            print("   ".join(line))
 
 
 def main():
