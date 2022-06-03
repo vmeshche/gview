@@ -89,26 +89,31 @@ class Colorator(Enum):
     RESET = "\033[0;0m"  # to reset color to default.
 
     @staticmethod
-    def color(color, s: str):
-        return f"{color.value}{s}{Colorator.RESET.value}"
+    def color(color, s: str, w: str):
+        return f"{color.value}{s:{w}}{Colorator.RESET.value}"
 
 
 @dataclass
-class Commit:
+class Event:
+    type: str
     author: str
     date: datetime
 
     def __str__(self):
-        return f"{self.author}; {str(self.date)}"
+        return f"{self.type}; {self.author}; {str(self.date)}"
 
 @dataclass()
 class Day:
     date: datetime
     contributions: str = "-"
     color: Colorator = Colorator.BLUE
+    w: int = 4
 
     def __str__(self):
-        return Colorator.color(color=self.color, s=str(self.contributions))
+        return Colorator.color(color=self.color, s=str(self.contributions), w=str(self.w))
+
+    def __format__(self, format_spec):
+        return Colorator.color(color=self.color, s=str(self.contributions), w=str(self.w))
 
     def __eq__(self, other):
         return True if self.date == other.date else False
@@ -126,13 +131,13 @@ class Day:
 
 class GitHubEvents:
     instance: GitHubInstance
-    commits: List[Commit]
+    events: List[Event]
 
     def __init__(self, gh_instance: GitHubInstance):
         self.instance = gh_instance
-        self.commits: List[Commit] = []
+        self.events: List[Event] = []
 
-    def filter_events(self, user: str, event_types: List[str]):
+    def filter_events(self, user: str):
         """
         Get public events from GitHub and return a list of Days with contribution data
 
@@ -144,19 +149,19 @@ class GitHubEvents:
 
         if data:
             for item in data:
-                if item["type"] in event_types:
-                    commit = Commit(author=item["actor"]["login"],
-                                    date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z').date()
-                                    )
-                    self.commits.append(commit)
+                event = Event(type=item["type"],
+                              author=item["actor"]["login"],
+                              date=datetime.strptime(item["created_at"], '%Y-%m-%dT%H:%M:%S%z').date()
+                              )
+                self.events.append(event)
             return self._sum_contributions()
         else:
             raise NameError("No data requested!")
 
     def _sum_contributions(self) -> List[Day]:
         day_map = []
-        for commit in self.commits:
-            new_day = Day(date=commit.date,
+        for event in self.events:
+            new_day = Day(date=event.date,
                           contributions=1,
                           color=Colorator.LIGHT_GREEN)
             if new_day in day_map:
@@ -178,7 +183,7 @@ class GitHubCalendar:
         for day in self.events:
             if day == new_day:
                 return day
-        return new_day
+        return str(new_day)
 
     def draw(self, weeks: int = 13):
         """
@@ -194,7 +199,7 @@ class GitHubCalendar:
         print(f"Interval from {start} to {now}")
 
         # Prepare first line
-        m_interval = 17  # Interval between months in line
+        m_interval = round(weeks * 1.5)  # Interval between months in line
         last_months = []
         for i in range(start.month, now.month + 1):
             last_months.append(f"{str(calendar.month_name[i]):{m_interval}}")
@@ -206,7 +211,7 @@ class GitHubCalendar:
             line = []
             for day in range(0, 7):  # iterate week days (Rows)
                 new_day = Day(days_counter)
-                text = f'{str(self._check_date_contribution(new_day))}'
+                text = f'{self._check_date_contribution(new_day)}'
                 line.append(text)
                 days_counter += timedelta(days=1)
             lines.append(line)
@@ -219,7 +224,7 @@ class GitHubCalendar:
                 text = lines[week][day]
                 line.append(text)
                 days_counter += timedelta(days=1)
-            print("   ".join(line))
+            print(" ".join(line))
 
 
 def main():
@@ -232,7 +237,7 @@ def main():
 
     # Get filtered events list
     gh_events = GitHubEvents(gh_instance)
-    events = gh_events.filter_events(args.user, ["PushEvent"])
+    events = gh_events.filter_events(args.user)
 
     # Print events in GitHub contribution calendar style
     gh_calendar = GitHubCalendar(events)
