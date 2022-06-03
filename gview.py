@@ -166,9 +166,6 @@ class GitHubEvents:
             else:
                 day_map.append(new_day)
 
-        for c in day_map:  # a bit debug
-            print(c)
-
         return day_map
 
 
